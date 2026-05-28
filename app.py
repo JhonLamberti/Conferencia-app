@@ -219,6 +219,33 @@ def linha_dissidio_hora_extra(linha: str) -> bool:
     return "dissidio" in norm and "hora extra" in norm
 
 
+def extrair_ref_valor_evento(linha: str, evento: str) -> Tuple[str, str]:
+    """Extrai referência e valor considerando o tipo de rubrica.
+
+    Regras principais:
+    - Hora extra, noturno e faltas por hora usam referência em horas (HH:MM).
+    - Faltas em Dia e Desconto DSR usam referência em quantidade decimal (ex.: 001,00).
+      Nessas linhas o primeiro decimal costuma ser o valor em R$ e o último decimal a referência.
+    - Repouso Remunerado normalmente tem apenas valor em R$.
+    """
+    evento_norm = normalizar_texto(evento)
+    horas = re.findall(r"\b\d{1,4}:\d{2}\b", linha)
+    valores = re.findall(r"\b\d{1,3}(?:\.\d{3})*,\d{2}\b", linha)
+
+    if evento_norm in {"faltas em dia", "desconto dsr"}:
+        # No PDF essas rubricas vêm no formato: código + descrição + referência + valor.
+        # Ex.: "398 Faltas em Dia 001,00 67,49"
+        # Portanto a referência é o primeiro decimal após a descrição e o valor é o último.
+        ref = valores[0] if valores else ""
+        valor = valores[-1] if len(valores) >= 2 else ""
+        return ref, valor
+
+    if evento_norm == "repouso remunerado":
+        return "", valores[-1] if valores else ""
+
+    return (horas[-1] if horas else "", valores[-1] if valores else "")
+
+
 def extrair_evento_do_bloco(bloco: str, evento: str, aliases: List[str]) -> Tuple[str, str]:
     for linha in bloco.splitlines():
         linha_norm = normalizar_texto(linha)
@@ -226,8 +253,11 @@ def extrair_evento_do_bloco(bloco: str, evento: str, aliases: List[str]) -> Tupl
         # valores residuais/reprocessados no lugar da HE normal do colaborador.
         if str(evento).lower().startswith("hora extra") and linha_dissidio_hora_extra(linha):
             continue
+        # Também ignora dissídio para noturno e eventos fixos quando o nome da rubrica aparece no ajuste.
+        if "dissidio" in linha_norm and any(normalizar_texto(alias) in linha_norm for alias in aliases):
+            continue
         if any(normalizar_texto(alias) in linha_norm for alias in aliases):
-            ref, valor = extrair_ref_valor_de_linha(linha)
+            ref, valor = extrair_ref_valor_evento(linha, evento)
             if evento == "Repouso Remunerado":
                 return "", valor
             return ref, valor
