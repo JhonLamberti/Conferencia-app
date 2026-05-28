@@ -457,8 +457,8 @@ def processar_planilha_ponto_manual(arquivo_excel, label_he_1: str, label_he_2: 
                 f"{label_he_1} Excel Min": tempo_para_minutos(he_1),
                 f"{label_he_2} Excel Min": tempo_para_minutos(he_2),
                 f"{label_noturno} Excel Min": tempo_para_minutos(noturno),
-                "Faltas Por Hora Excel": minutos_para_tempo(faltas_hora_min_atual),
-                "Faltas Por Hora Excel Min": faltas_hora_min_atual,
+                "Horas falta Excel": minutos_para_tempo(faltas_hora_min_atual),
+                "Horas falta Excel Min": faltas_hora_min_atual,
                 "Faltas em Dia Excel": formatar_dias(faltas_dia_atual),
                 "Faltas em Dia Excel Qtd": faltas_dia_atual,
             })
@@ -529,7 +529,7 @@ def processar_planilha_ponto_dinamica(arquivo_excel) -> Tuple[pd.DataFrame, List
             continue
 
         # Leitura da coluna G (Débito) dentro do bloco do colaborador.
-        # Regra de auditoria: >= 08:00 conta 1 falta em dia; > 00:00 e < 08:00 soma como faltas por hora.
+        # Regra de auditoria: >= 08:00 conta 1 falta em dia; > 00:00 e < 08:00 soma como horas falta.
         if colaborador_atual and col_a_norm not in {"totais", "data", "colaborador"}:
             debito_min = minutos_seguro(row.iloc[idx_debito] if len(row) > idx_debito else "")
             if debito_min >= 8 * 60:
@@ -541,8 +541,8 @@ def processar_planilha_ponto_dinamica(arquivo_excel) -> Tuple[pd.DataFrame, List
             reg = {
                 "Colaborador Excel": colaborador_atual,
                 "Chave Nome": normalizar_nome(colaborador_atual),
-                "Faltas Por Hora Excel": minutos_para_tempo(faltas_hora_min_atual),
-                "Faltas Por Hora Excel Min": faltas_hora_min_atual,
+                "Horas falta Excel": minutos_para_tempo(faltas_hora_min_atual),
+                "Horas falta Excel Min": faltas_hora_min_atual,
                 "Faltas em Dia Excel": formatar_dias(faltas_dia_atual),
                 "Faltas em Dia Excel Qtd": faltas_dia_atual,
             }
@@ -566,7 +566,7 @@ def processar_planilha_ponto_dinamica(arquivo_excel) -> Tuple[pd.DataFrame, List
     colunas = ["Colaborador Excel", "Chave Nome", "Percentuais HE Excel"]
     for p in percentuais_ordenados:
         colunas += [f"Hora Extra {p}% Excel", f"Hora Extra {p}% Excel Min"]
-    colunas += ["Adicional Noturno Excel", "Adicional Noturno Excel Min", "Faltas Por Hora Excel", "Faltas Por Hora Excel Min", "Faltas em Dia Excel", "Faltas em Dia Excel Qtd"]
+    colunas += ["Adicional Noturno Excel", "Adicional Noturno Excel Min", "Horas falta Excel", "Horas falta Excel Min", "Faltas em Dia Excel", "Faltas em Dia Excel Qtd"]
 
     df = pd.DataFrame(registros)
     for c in colunas:
@@ -608,7 +608,7 @@ def comparar_manual(df_pdf: pd.DataFrame, df_excel: pd.DataFrame, label_he_1: st
         f"{label_he_1} PDF", f"{label_he_1} Excel", f"Diferença {label_he_1}", f"Status {label_he_1}",
         f"{label_he_2} PDF", f"{label_he_2} Excel", f"Diferença {label_he_2}", f"Status {label_he_2}",
         f"{label_noturno} PDF", f"{label_noturno} Excel", f"Diferença {label_noturno}", f"Status {label_noturno}",
-        "Faltas Por Hora PDF", "Faltas Por Hora Excel", "Diferença Faltas Por Hora", "Status Faltas Por Hora",
+        "Horas falta PDF", "Horas falta Excel", "Diferença Horas falta", "Status Horas falta",
         "Faltas em Dia PDF", "Faltas em Dia Excel", "Diferença Faltas em Dia", "Status Faltas em Dia",
         "Status Geral",
     ]
@@ -630,7 +630,7 @@ def comparar_manual(df_pdf: pd.DataFrame, df_excel: pd.DataFrame, label_he_1: st
                 f"{label_he_1} PDF": minutos_para_tempo(pdf_he_1_min), f"{label_he_1} Excel": "", f"Diferença {label_he_1}": "", f"Status {label_he_1}": "NÃO ENCONTRADO",
                 f"{label_he_2} PDF": minutos_para_tempo(pdf_he_2_min), f"{label_he_2} Excel": "", f"Diferença {label_he_2}": "", f"Status {label_he_2}": "NÃO ENCONTRADO",
                 f"{label_noturno} PDF": minutos_para_tempo(pdf_noturno_min), f"{label_noturno} Excel": "", f"Diferença {label_noturno}": "", f"Status {label_noturno}": "NÃO ENCONTRADO",
-                "Faltas Por Hora PDF": minutos_para_tempo(minutos_seguro(row_pdf.get("Faltas Por Hora Ref", ""))), "Faltas Por Hora Excel": "", "Diferença Faltas Por Hora": "", "Status Faltas Por Hora": "NÃO ENCONTRADO",
+                "Horas falta PDF": minutos_para_tempo(minutos_seguro(row_pdf.get("Faltas Por Hora Ref", ""))), "Horas falta Excel": "", "Diferença Horas falta": "", "Status Horas falta": "NÃO ENCONTRADO",
                 "Faltas em Dia PDF": formatar_dias(decimal_ref_para_int(row_pdf.get("Faltas em Dia Ref", ""))), "Faltas em Dia Excel": "", "Diferença Faltas em Dia": "", "Status Faltas em Dia": "NÃO ENCONTRADO",
                 "Status Geral": "COLABORADOR NÃO ENCONTRADO NO EXCEL",
             })
@@ -642,7 +642,7 @@ def comparar_manual(df_pdf: pd.DataFrame, df_excel: pd.DataFrame, label_he_1: st
             diff = pdf_min - excel_min
             vals += [minutos_para_tempo(pdf_min), minutos_para_tempo(excel_min), minutos_para_tempo(diff), status_por_diferenca(diff)]
         pdf_fh_min = minutos_seguro(row_pdf.get("Faltas Por Hora Ref", ""))
-        excel_fh_min = inteiro_seguro(match.get("Faltas Por Hora Excel Min", 0))
+        excel_fh_min = inteiro_seguro(match.get("Horas falta Excel Min", 0))
         diff_fh = pdf_fh_min - excel_fh_min
         status_fh = status_por_diferenca(diff_fh)
 
@@ -657,7 +657,7 @@ def comparar_manual(df_pdf: pd.DataFrame, df_excel: pd.DataFrame, label_he_1: st
             f"{label_he_1} PDF": vals[0], f"{label_he_1} Excel": vals[1], f"Diferença {label_he_1}": vals[2], f"Status {label_he_1}": vals[3],
             f"{label_he_2} PDF": vals[4], f"{label_he_2} Excel": vals[5], f"Diferença {label_he_2}": vals[6], f"Status {label_he_2}": vals[7],
             f"{label_noturno} PDF": vals[8], f"{label_noturno} Excel": vals[9], f"Diferença {label_noturno}": vals[10], f"Status {label_noturno}": vals[11],
-            "Faltas Por Hora PDF": minutos_para_tempo(pdf_fh_min), "Faltas Por Hora Excel": minutos_para_tempo(excel_fh_min), "Diferença Faltas Por Hora": minutos_para_tempo(diff_fh), "Status Faltas Por Hora": status_fh,
+            "Horas falta PDF": minutos_para_tempo(pdf_fh_min), "Horas falta Excel": minutos_para_tempo(excel_fh_min), "Diferença Horas falta": minutos_para_tempo(diff_fh), "Status Horas falta": status_fh,
             "Faltas em Dia PDF": formatar_dias(pdf_fd_qtd), "Faltas em Dia Excel": formatar_dias(excel_fd_qtd), "Diferença Faltas em Dia": formatar_dias(diff_fd), "Status Faltas em Dia": status_fd,
             "Status Geral": status_geral,
         })
@@ -672,7 +672,7 @@ def comparar_dinamico(df_pdf: pd.DataFrame, df_excel: pd.DataFrame, percentuais:
         cols += [f"{label} PDF", f"{label} Excel", f"Diferença {label}", f"Status {label}"]
     if comparar_noturno:
         cols += ["Adicional Noturno PDF", "Adicional Noturno Excel", "Diferença Adicional Noturno", "Status Adicional Noturno"]
-    cols += ["Faltas Por Hora PDF", "Faltas Por Hora Excel", "Diferença Faltas Por Hora", "Status Faltas Por Hora"]
+    cols += ["Horas falta PDF", "Horas falta Excel", "Diferença Horas falta", "Status Horas falta"]
     cols += ["Faltas em Dia PDF", "Faltas em Dia Excel", "Diferença Faltas em Dia", "Status Faltas em Dia"]
     cols += ["Status Geral"]
 
@@ -700,10 +700,10 @@ def comparar_dinamico(df_pdf: pd.DataFrame, df_excel: pd.DataFrame, percentuais:
                 reg["Adicional Noturno Excel"] = ""
                 reg["Diferença Adicional Noturno"] = ""
                 reg["Status Adicional Noturno"] = "NÃO ENCONTRADO"
-            reg["Faltas Por Hora PDF"] = minutos_para_tempo(minutos_seguro(row_pdf.get("Faltas Por Hora Ref", "")))
-            reg["Faltas Por Hora Excel"] = ""
-            reg["Diferença Faltas Por Hora"] = ""
-            reg["Status Faltas Por Hora"] = "NÃO ENCONTRADO"
+            reg["Horas falta PDF"] = minutos_para_tempo(minutos_seguro(row_pdf.get("Faltas Por Hora Ref", "")))
+            reg["Horas falta Excel"] = ""
+            reg["Diferença Horas falta"] = ""
+            reg["Status Horas falta"] = "NÃO ENCONTRADO"
             reg["Faltas em Dia PDF"] = formatar_dias(decimal_ref_para_int(row_pdf.get("Faltas em Dia Ref", "")))
             reg["Faltas em Dia Excel"] = ""
             reg["Diferença Faltas em Dia"] = ""
@@ -747,14 +747,14 @@ def comparar_dinamico(df_pdf: pd.DataFrame, df_excel: pd.DataFrame, percentuais:
 
         # Comparação das faltas calculadas pela coluna G (Débito) da planilha.
         pdf_fh_min = minutos_seguro(row_pdf.get("Faltas Por Hora Ref", ""))
-        excel_fh_min = inteiro_seguro(match.get("Faltas Por Hora Excel Min", 0))
+        excel_fh_min = inteiro_seguro(match.get("Horas falta Excel Min", 0))
         diff_fh = pdf_fh_min - excel_fh_min
         status_fh = status_por_diferenca(diff_fh)
         status_list.append(status_fh)
-        reg["Faltas Por Hora PDF"] = minutos_para_tempo(pdf_fh_min)
-        reg["Faltas Por Hora Excel"] = minutos_para_tempo(excel_fh_min)
-        reg["Diferença Faltas Por Hora"] = minutos_para_tempo(diff_fh)
-        reg["Status Faltas Por Hora"] = status_fh
+        reg["Horas falta PDF"] = minutos_para_tempo(pdf_fh_min)
+        reg["Horas falta Excel"] = minutos_para_tempo(excel_fh_min)
+        reg["Diferença Horas falta"] = minutos_para_tempo(diff_fh)
+        reg["Status Horas falta"] = status_fh
 
         pdf_fd_qtd = decimal_ref_para_int(row_pdf.get("Faltas em Dia Ref", ""))
         excel_fd_qtd = inteiro_seguro(match.get("Faltas em Dia Excel Qtd", 0))
@@ -1067,4 +1067,4 @@ if arquivo_pdf:
             st.error(f"Erro ao processar os arquivos: {e}")
 
 st.divider()
-st.caption("Modo automático: detecta qualquer percentual de Hora Extra no PDF e cruza com as colunas da planilha pelo cabeçalho específico de cada colaborador. Também lê a coluna G (Débito): >= 08:00 conta como falta em dia; > 00:00 e < 08:00 soma como faltas por hora.")
+st.caption("Modo automático: detecta qualquer percentual de Hora Extra no PDF e cruza com as colunas da planilha pelo cabeçalho específico de cada colaborador. Também lê a coluna G (Débito): >= 08:00 conta como falta em dia; > 00:00 e < 08:00 soma como horas falta.")
