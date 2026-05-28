@@ -1060,6 +1060,19 @@ def gerar_excel(df_pdf: pd.DataFrame, df_excel: Optional[pd.DataFrame] = None, d
 # -----------------------------
 
 st.set_page_config(page_title="Conferência de Folha PDF x Ponto", layout="wide")
+
+# Oculta a barra nativa das tabelas do Streamlit, pois o ícone de download dessas tabelas
+# baixa CSV. O download oficial do sistema é o botão "Baixar planilha XLSX da conferência".
+st.markdown(
+    """
+    <style>
+    [data-testid="stElementToolbar"] {display: none !important;}
+    button[title*="Download"] {display: none !important;}
+    button[aria-label*="Download"] {display: none !important;}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 st.title("Conferência de eventos da folha em PDF x planilha de ponto")
 st.write("Envie o PDF da folha e, opcionalmente, a planilha de ponto. O app detecta horas extras, adicional noturno e também calcula faltas pela coluna G (Débito) da planilha por colaborador.")
 
@@ -1175,12 +1188,13 @@ if arquivo_pdf:
                         st.info("Nenhuma comparação gerada.")
 
                 excel_bytes = gerar_excel(df_pdf, df_excel, df_comparacao)
+                st.success("Arquivo XLSX oficial gerado. Use o botão abaixo para baixar; os ícones pequenos das tabelas foram ocultados para evitar download em CSV.")
                 st.download_button(
-                    label="Baixar planilha XLSX da conferência",
+                    label="⬇️ Baixar planilha OFICIAL em XLSX",
                     data=excel_bytes,
                     file_name="conferencia_pdf_x_ponto.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    help="Baixa um arquivo .xlsx verdadeiro, com abas, filtros e formatação. Não é CSV.",
+                    help="Use este botão para baixar o arquivo Excel verdadeiro (.xlsx). Não use o ícone pequeno das tabelas, pois ele gera CSV.",
                 )
         except Exception as e:
             st.error(f"Erro ao processar os arquivos: {e}")
