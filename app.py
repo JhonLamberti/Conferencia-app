@@ -283,6 +283,10 @@ def detectar_noturnos_no_bloco(bloco: str) -> Dict[str, Dict[str, str]]:
 
     for linha in bloco.splitlines():
         linha_norm = normalizar_texto(linha)
+        # Ignora rubricas de dissídio ligadas a noturno/adicional noturno,
+        # assim como já fazemos com Hora Extra.
+        if "dissidio" in linha_norm and "noturno" in linha_norm:
+            continue
         m = padrao_noturno.search(linha_norm)
         if m:
             perc = m.group(1)
@@ -290,6 +294,28 @@ def detectar_noturnos_no_bloco(bloco: str) -> Dict[str, Dict[str, str]]:
             encontrados[perc] = {"Ref": ref, "Valor": valor}
     return encontrados
 
+
+
+
+def colunas_noturno_pdf(df_pdf: pd.DataFrame) -> List[str]:
+    """Retorna todas as colunas de referência de Noturno do PDF, independente do percentual.
+
+    Regra: qualquer evento lido como 'Noturno XX%' no PDF deve ser comparado
+    contra a coluna 'Adicional noturno' da planilha.
+    """
+    return [c for c in df_pdf.columns if re.match(r"^Noturno\s+\d{1,3}%\s+Ref$", str(c))]
+
+
+def total_noturno_pdf_min(row_pdf, df_pdf: pd.DataFrame) -> int:
+    """Soma todos os Noturnos percentuais do PDF para o colaborador.
+
+    Isso evita que o app pegue apenas o primeiro percentual existente no arquivo
+    e deixe em branco quando o colaborador possui outro percentual.
+    """
+    total = 0
+    for c in colunas_noturno_pdf(df_pdf):
+        total += minutos_seguro(row_pdf.get(c, ""))
+    return total
 
 def processar_pdf_dinamico(arquivo_pdf) -> Tuple[pd.DataFrame, List[str]]:
     registros_base = []
@@ -640,7 +666,7 @@ def comparar_dinamico(df_pdf: pd.DataFrame, df_excel: pd.DataFrame, percentuais:
                 reg[f"Diferença {label}"] = ""
                 reg[f"Status {label}"] = "NÃO ENCONTRADO"
             if comparar_noturno:
-                reg["Adicional Noturno PDF"] = minutos_para_tempo(tempo_para_minutos(row_pdf.get("Noturno 27% Ref", "")))
+                reg["Adicional Noturno PDF"] = minutos_para_tempo(total_noturno_pdf_min(row_pdf, df_pdf))
                 reg["Adicional Noturno Excel"] = ""
                 reg["Diferença Adicional Noturno"] = ""
                 reg["Status Adicional Noturno"] = "NÃO ENCONTRADO"
@@ -675,10 +701,11 @@ def comparar_dinamico(df_pdf: pd.DataFrame, df_excel: pd.DataFrame, percentuais:
             reg[f"Status {label}"] = status
 
         if comparar_noturno:
-            # No PDF do seu modelo o evento é 'Noturno 27%'. Se outro contrato mudar o percentual,
-            # ele pode ser configurado no modo manual. Aqui a comparação dinâmica foca nas HEs.
-            col_noturno_pdf = next((c for c in df_pdf.columns if c.startswith("Noturno") and c.endswith(" Ref")), None)
-            pdf_noturno_min = tempo_para_minutos(row_pdf.get(col_noturno_pdf, "")) if col_noturno_pdf else 0
+            # Qualquer "Noturno XX%" identificado no PDF deve ser associado
+            # ao "Adicional Noturno" da planilha. Como alguns contratos podem
+            # ter percentuais diferentes, somamos todos os Noturnos percentuais
+            # encontrados no bloco daquele colaborador.
+            pdf_noturno_min = total_noturno_pdf_min(row_pdf, df_pdf)
             excel_noturno_min = inteiro_seguro(match.get("Adicional Noturno Excel Min", 0))
             diff = pdf_noturno_min - excel_noturno_min
             status = status_por_diferenca(diff)
