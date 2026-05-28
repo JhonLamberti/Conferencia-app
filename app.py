@@ -9,6 +9,7 @@ import pdfplumber
 import streamlit as st
 from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
 from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.table import Table, TableStyleInfo
 
 EVENTOS_FIXOS_BASE = {
     "Faltas Por Hora": ["faltas por hora"],
@@ -776,9 +777,143 @@ def comparar_dinamico(df_pdf: pd.DataFrame, df_excel: pd.DataFrame, percentuais:
 # -----------------------------
 
 def ajustar_larguras(ws):
+    """Ajusta as larguras de forma controlada para o Excel não ficar visualmente quebrado."""
+    larguras_padrao = {
+        "Colaborador": 34,
+        "Evento": 24,
+        "PDF": 14,
+        "Planilha": 16,
+        "Diferença": 16,
+        "Status": 28,
+        "Motivo": 72,
+        "Código": 12,
+        "Página": 10,
+        "Indicador": 42,
+        "Quantidade": 16,
+    }
+
     for col in ws.columns:
-        max_len = max(len(str(cell.value)) if cell.value is not None else 0 for cell in col)
-        ws.column_dimensions[col[0].column_letter].width = min(max(max_len + 2, 12), 45)
+        letra = col[0].column_letter
+        cabecalho = str(ws.cell(row=1, column=col[0].column).value or "").strip()
+        if cabecalho in larguras_padrao:
+            largura = larguras_padrao[cabecalho]
+        else:
+            max_len = max(len(str(cell.value)) if cell.value is not None else 0 for cell in col)
+            largura = min(max(max_len + 2, 12), 34)
+        ws.column_dimensions[letra].width = largura
+
+
+def adicionar_tabela_excel(ws):
+    """Cria tabela com filtro e estilo profissional, sem quebrar se o nome da aba tiver acentos."""
+    if ws.max_row < 2 or ws.max_column < 1:
+        return
+    ref = f"A1:{get_column_letter(ws.max_column)}{ws.max_row}"
+    nome_base = re.sub(r"[^A-Za-z0-9_]", "", ws.title) or "Tabela"
+    nome_tabela = f"tbl_{nome_base[:20]}"
+    try:
+        tab = Table(displayName=nome_tabela, ref=ref)
+        style = TableStyleInfo(
+            name="TableStyleMedium2",
+            showFirstColumn=False,
+            showLastColumn=False,
+            showRowStripes=True,
+            showColumnStripes=False,
+        )
+        tab.tableStyleInfo = style
+        ws.add_table(tab)
+    except Exception:
+        # Se já houver tabela ou algum detalhe impedir a criação, mantém filtros normais.
+        ws.auto_filter.ref = ref
+
+
+def aplicar_estilo_planilha(wb):
+    """Formata o Excel exportado para ficar limpo, filtrável e fácil de auditar."""
+    header_fill = PatternFill("solid", fgColor="1F4E78")
+    header_font = Font(color="FFFFFF", bold=True)
+    red_fill = PatternFill("solid", fgColor="FCE4D6")
+    yellow_fill = PatternFill("solid", fgColor="FFF2CC")
+    green_fill = PatternFill("solid", fgColor="E2F0D9")
+    blue_fill = PatternFill("solid", fgColor="DDEBF7")
+    gray_fill = PatternFill("solid", fgColor="E7E6E6")
+    purple_fill = PatternFill("solid", fgColor="E4DFEC")
+    thin = Side(style="thin", color="D9D9D9")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    for ws in wb.worksheets:
+        ws.sheet_view.showGridLines = False
+        ws.freeze_panes = "A2"
+        ws.row_dimensions[1].height = 28
+
+        if ws.max_row >= 1:
+            ws.auto_filter.ref = ws.dimensions
+            for cell in ws[1]:
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+                cell.border = border
+
+        headers = [str(c.value or "").strip() for c in ws[1]] if ws.max_row >= 1 else []
+        header_map = {h: i + 1 for i, h in enumerate(headers)}
+
+        for row in ws.iter_rows(min_row=2):
+            ws.row_dimensions[row[0].row].height = 22
+            status_text = str(ws.cell(row=row[0].row, column=header_map.get("Status", 1)).value or "")
+            evento_text = str(ws.cell(row=row[0].row, column=header_map.get("Evento", 1)).value or "")
+            norm_status = normalizar_texto(status_text)
+            norm_evento = normalizar_texto(evento_text)
+
+            fill = None
+            if ws.title == "Divergências":
+                if "sem coluna" in norm_status or "nao encontrado" in norm_status:
+                    fill = yellow_fill
+                elif norm_evento == "horas falta":
+                    fill = purple_fill
+                else:
+                    fill = red_fill
+            elif ws.title == "Horas falta":
+                fill = purple_fill
+            elif "ok" in norm_status and "divergente" not in norm_status:
+                fill = green_fill
+
+            for cell in row:
+                cell.border = border
+                cell.alignment = Alignment(vertical="center", horizontal="left", wrap_text=True)
+                if fill:
+                    cell.fill = fill
+
+        # Alinhamentos específicos para leitura rápida
+        for col_name in ["PDF", "Planilha", "Diferença", "Quantidade", "Código", "Página"]:
+            idx = header_map.get(col_name)
+            if idx:
+                for cell in ws.iter_cols(min_col=idx, max_col=idx, min_row=2, max_row=ws.max_row):
+                    for c in cell:
+                        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+        idx_motivo = header_map.get("Motivo")
+        if idx_motivo:
+            for c in ws.iter_cols(min_col=idx_motivo, max_col=idx_motivo, min_row=2, max_row=ws.max_row):
+                for cell in c:
+                    cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+
+        ajustar_larguras(ws)
+        adicionar_tabela_excel(ws)
+
+    if "Resumo" in wb.sheetnames:
+        ws = wb["Resumo"]
+        ws.sheet_properties.tabColor = "70AD47"
+        for row in ws.iter_rows(min_row=2):
+            for cell in row:
+                cell.fill = blue_fill if cell.column == 1 else gray_fill
+                cell.font = Font(bold=True if cell.column == 1 else False)
+                cell.border = border
+                cell.alignment = Alignment(vertical="center")
+
+    if "Divergências" in wb.sheetnames:
+        wb["Divergências"].sheet_properties.tabColor = "C00000"
+    if "Horas falta" in wb.sheetnames:
+        wb["Horas falta"].sheet_properties.tabColor = "7030A0"
+    if "Completo" in wb.sheetnames:
+        wb["Completo"].sheet_properties.tabColor = "A5A5A5"
 
 
 def status_eh_problema(status: str) -> bool:
@@ -875,55 +1010,6 @@ def montar_resumo(df_pdf: pd.DataFrame, df_excel: Optional[pd.DataFrame], df_com
         {"Indicador": "Eventos divergentes", "Quantidade": eventos_div},
         {"Indicador": "Colaboradores sem divergência", "Quantidade": ok},
     ])
-
-
-def aplicar_estilo_planilha(wb):
-    header_fill = PatternFill("solid", fgColor="1F4E78")
-    header_font = Font(color="FFFFFF", bold=True)
-    red_fill = PatternFill("solid", fgColor="F8CBAD")
-    yellow_fill = PatternFill("solid", fgColor="FFF2CC")
-    green_fill = PatternFill("solid", fgColor="E2F0D9")
-    gray_fill = PatternFill("solid", fgColor="E7E6E6")
-    thin = Side(style="thin", color="D9D9D9")
-    border = Border(left=thin, right=thin, top=thin, bottom=thin)
-
-    for ws in wb.worksheets:
-        if ws.max_row >= 1:
-            ws.freeze_panes = "A2"
-            ws.auto_filter.ref = ws.dimensions
-            for cell in ws[1]:
-                cell.fill = header_fill
-                cell.font = header_font
-                cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-                cell.border = border
-
-        for row in ws.iter_rows(min_row=2):
-            status_text = " ".join(str(c.value or "") for c in row)
-            norm = normalizar_texto(status_text)
-            if ws.title == "Divergências":
-                if "sem coluna" in norm or "nao encontrado" in norm:
-                    fill = yellow_fill
-                else:
-                    fill = red_fill
-            elif "ok" in norm and "divergente" not in norm:
-                fill = green_fill
-            else:
-                fill = None
-            for cell in row:
-                cell.border = border
-                cell.alignment = Alignment(vertical="center", wrap_text=True)
-                if fill:
-                    cell.fill = fill
-
-        ajustar_larguras(ws)
-        ws.sheet_view.showGridLines = False
-
-    if "Resumo" in wb.sheetnames:
-        ws = wb["Resumo"]
-        for row in ws.iter_rows(min_row=2):
-            for cell in row:
-                cell.fill = gray_fill
-                cell.font = Font(bold=True if cell.column == 1 else False)
 
 
 def gerar_excel(df_pdf: pd.DataFrame, df_excel: Optional[pd.DataFrame] = None, df_comparacao: Optional[pd.DataFrame] = None) -> bytes:
