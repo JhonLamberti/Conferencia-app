@@ -1013,6 +1013,13 @@ def montar_resumo(df_pdf: pd.DataFrame, df_excel: Optional[pd.DataFrame], df_com
 
 
 def gerar_excel(df_pdf: pd.DataFrame, df_excel: Optional[pd.DataFrame] = None, df_comparacao: Optional[pd.DataFrame] = None) -> bytes:
+    """Gera um arquivo .XLSX real, nunca CSV.
+
+    Importante: o retorno desta função precisa ser bytes de um workbook OOXML,
+    que sempre começa com PK (arquivo ZIP interno do Excel). Isso evita o
+    problema de abrir tudo em uma coluna só, que acontece quando o app entrega
+    CSV/texto separado por vírgulas em vez de XLSX verdadeiro.
+    """
     output = io.BytesIO()
     df_divergencias = montar_divergencias_limpas(df_comparacao)
     df_resumo = montar_resumo(df_pdf, df_excel, df_comparacao, df_divergencias)
@@ -1038,9 +1045,15 @@ def gerar_excel(df_pdf: pd.DataFrame, df_excel: Optional[pd.DataFrame] = None, d
         aplicar_estilo_planilha(writer.book)
 
         # Deixa Divergências como primeira aba visível.
-        writer.book.active = writer.book.sheetnames.index("Divergências")
+        if "Divergências" in writer.book.sheetnames:
+            writer.book.active = writer.book.sheetnames.index("Divergências")
 
-    return output.getvalue()
+    dados = output.getvalue()
+    # Validação de segurança: XLSX é um arquivo ZIP, portanto começa com b"PK".
+    # Se não começar com PK, não envia o download como Excel para evitar arquivo quebrado/CSV.
+    if not dados.startswith(b"PK"):
+        raise ValueError("Falha ao gerar XLSX real. O arquivo gerado não está no formato Excel válido.")
+    return dados
 
 # -----------------------------
 # Interface Streamlit
@@ -1163,10 +1176,11 @@ if arquivo_pdf:
 
                 excel_bytes = gerar_excel(df_pdf, df_excel, df_comparacao)
                 st.download_button(
-                    label="Baixar Excel da conferência",
+                    label="Baixar planilha XLSX da conferência",
                     data=excel_bytes,
                     file_name="conferencia_pdf_x_ponto.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    help="Baixa um arquivo .xlsx verdadeiro, com abas, filtros e formatação. Não é CSV.",
                 )
         except Exception as e:
             st.error(f"Erro ao processar os arquivos: {e}")
