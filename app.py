@@ -832,6 +832,8 @@ def montar_divergencias_limpas(df_comparacao: Optional[pd.DataFrame]) -> pd.Data
                 motivo = "Evento existe no PDF, mas não foi encontrada coluna correspondente na planilha para este colaborador."
             elif "nao encontrado" in status_norm:
                 motivo = "Colaborador ou evento não localizado na planilha."
+            elif normalizar_texto(evento) == "horas falta":
+                motivo = "Comparação entre Faltas Por Hora do PDF e Horas falta calculadas pela coluna G da planilha. Na coluna G, valores > 00:00 e < 08:00 são somados como Horas falta."
             else:
                 motivo = "Valor do PDF diferente do valor da planilha."
 
@@ -849,6 +851,14 @@ def montar_divergencias_limpas(df_comparacao: Optional[pd.DataFrame]) -> pd.Data
 
     return pd.DataFrame(registros, columns=colunas)
 
+
+
+
+def filtrar_horas_falta(df_divergencias: pd.DataFrame) -> pd.DataFrame:
+    """Retorna apenas divergências de Horas falta para destaque na tela/Excel."""
+    if df_divergencias is None or df_divergencias.empty or "Evento" not in df_divergencias.columns:
+        return pd.DataFrame(columns=df_divergencias.columns if df_divergencias is not None else [])
+    return df_divergencias[df_divergencias["Evento"].astype(str).str.lower().str.strip() == "horas falta"].copy()
 
 def montar_resumo(df_pdf: pd.DataFrame, df_excel: Optional[pd.DataFrame], df_comparacao: Optional[pd.DataFrame], df_divergencias: pd.DataFrame) -> pd.DataFrame:
     total_pdf = len(df_pdf) if df_pdf is not None else 0
@@ -925,6 +935,10 @@ def gerar_excel(df_pdf: pd.DataFrame, df_excel: Optional[pd.DataFrame] = None, d
         # Aba principal: só o que precisa de ação.
         df_divergencias.to_excel(writer, index=False, sheet_name="Divergências")
         df_resumo.to_excel(writer, index=False, sheet_name="Resumo")
+
+        df_horas_falta = filtrar_horas_falta(df_divergencias)
+        if not df_horas_falta.empty:
+            df_horas_falta.to_excel(writer, index=False, sheet_name="Horas falta")
 
         if df_comparacao is not None and not df_comparacao.empty:
             df_comparacao.to_excel(writer, index=False, sheet_name="Completo")
@@ -1050,6 +1064,11 @@ if arquivo_pdf:
                         if df_divergencias_view.empty:
                             st.success("Nenhuma divergência encontrada. Todos os eventos comparados estão OK.")
                         else:
+                            df_horas_falta_view = filtrar_horas_falta(df_divergencias_view)
+                            if not df_horas_falta_view.empty:
+                                st.warning(f"Horas falta: {len(df_horas_falta_view)} divergência(s) encontrada(s) pela regra da coluna G.")
+                                st.dataframe(df_horas_falta_view, use_container_width=True)
+                                st.divider()
                             st.dataframe(df_divergencias_view, use_container_width=True)
                             with st.expander("Ver comparação completa para auditoria"):
                                 st.dataframe(df_comparacao, use_container_width=True)
