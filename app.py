@@ -1098,7 +1098,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 st.title("Conferência de eventos da folha em PDF x planilha de ponto")
-st.write("Envie o PDF da folha e, opcionalmente, a planilha de ponto. O app detecta horas extras, adicional noturno e também calcula faltas pela coluna G (Débito) da planilha por colaborador.")
+st.write("Envie o PDF da folha e, opcionalmente, a planilha de ponto. O sistema detecta horas extras, adicional noturno e também calcula faltas.")
 
 with st.sidebar:
     st.header("Configuração do contrato")
@@ -1208,7 +1208,7 @@ if arquivo_pdf:
                 st.session_state["mensagem_pdf"] = msg_pdf
                 st.session_state["mensagem_comparacao"] = msg_comp
                 st.session_state["analise_concluida"] = True
-                st.success("Conferência processada e salva na tela. Você pode baixar o XLSX sem perder a análise.")
+                st.success("Conferência processada e salva na tela.")
 
         except Exception as e:
             st.error(f"Erro ao processar os arquivos: {e}")
