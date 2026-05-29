@@ -38,7 +38,12 @@ def normalizar_nome(nome: str) -> str:
 
 def limpar_nome(nome: str) -> str:
     nome = re.sub(r"\s+", " ", nome or "").strip()
-    nome = re.split(r"\s+\d{1,3}[.,]\d{2,}", nome)[0].strip()
+    # Corta qualquer informação que venha depois do nome na mesma linha.
+    # Alguns PDFs extraem o cabeçalho do colaborador como:
+    # "000044 IGOR ... 3.380,00 Função :..." ou com texto colado.
+    nome = re.split(r"\s+\d{1,3}(?:\.\d{3})*,\d{2}\b", nome)[0].strip()
+    nome = re.split(r"\bFun[cç][aã]o\b|\bAdmiss[aã]o\b|\bLivro\b|\bDep\s+IR\b", nome, flags=re.I)[0].strip()
+    nome = re.sub(r"[:;,.]+$", "", nome).strip()
     return nome
 
 
@@ -181,17 +186,36 @@ def extrair_colaboradores_do_texto(texto: str, pagina: int) -> List[Dict]:
     linhas = [l.strip() for l in (texto or "").splitlines() if l.strip()]
     inicios: List[Tuple[int, str, str]] = []
 
-    padrao_colaborador = re.compile(
-        r"^(\d{6})\s+([A-ZÁÉÍÓÚÂÊÔÃÕÇ ]{5,}?)(?=\s+\d{1,3}(?:\.\d{3})*,\d{2}|\s+\d{3,4}\s|\s+Admissão|$)"
-    )
+    # Regra mais rígida para separar blocos por colaborador:
+    # todo novo colaborador precisa iniciar uma nova linha com código de 6 dígitos.
+    # Isso impede que eventos de um colaborador seguinte sejam anexados ao anterior.
+    padrao_colaborador = re.compile(r"^\s*(\d{6})\s+(.+)$")
 
     for idx, linha in enumerate(linhas):
-        m = padrao_colaborador.search(linha)
-        if m:
-            codigo = m.group(1)
-            nome = limpar_nome(m.group(2))
-            if nome and "EMPRESA" not in nome and "FOLHA" not in nome:
-                inicios.append((idx, codigo, nome))
+        m = padrao_colaborador.match(linha)
+        if not m:
+            continue
+
+        codigo = m.group(1)
+        resto = m.group(2).strip()
+
+        # Evita falsos positivos em linhas que não são cabeçalho de colaborador.
+        if not re.search(r"[A-ZÁÉÍÓÚÂÊÔÃÕÇ]{2,}", resto):
+            continue
+
+        nome = limpar_nome(resto)
+        nome_norm = normalizar_texto(nome)
+
+        # O nome deve ter pelo menos duas palavras.
+        if len(nome_norm.split()) < 2:
+            continue
+        if any(x in nome_norm for x in ["empresa", "folha", "cnpj", "pagina", "codigo", "nome"]):
+            continue
+
+        # Remove duplicidade caso o mesmo cabeçalho seja lido duas vezes na página.
+        if inicios and inicios[-1][0] == idx:
+            continue
+        inicios.append((idx, codigo, nome))
 
     colaboradores = []
     for pos, (idx, codigo, nome) in enumerate(inicios):
@@ -1113,6 +1137,20 @@ with st.sidebar:
         st.info("Neste modo, o app lê qualquer 'Hora Extra ...%' que encontrar no PDF. Na planilha, ele identifica as porcentagens pelo cabeçalho de cada colaborador, pois cada bloco pode ter percentuais diferentes.")
         comparar_noturno = st.checkbox("Comparar adicional noturno da planilha", value=True)
 
+# Guarda os resultados no session_state para o download não apagar a análise.
+for chave, valor_padrao in {
+    "analise_concluida": False,
+    "df_pdf": None,
+    "df_excel": None,
+    "df_comparacao": None,
+    "df_divergencias": None,
+    "excel_bytes": None,
+    "mensagem_pdf": "",
+    "mensagem_comparacao": "",
+}.items():
+    if chave not in st.session_state:
+        st.session_state[chave] = valor_padrao
+
 arquivo_pdf = st.file_uploader("1. Selecione o PDF da folha", type=["pdf"])
 arquivo_excel = st.file_uploader("2. Selecione a planilha de ponto padrão", type=["xlsx"], help="No modo automático, o app usa os cabeçalhos das colunas para identificar as HEs.")
 
@@ -1122,11 +1160,12 @@ if arquivo_pdf:
             if modo_automatico:
                 with st.spinner("Lendo PDF e detectando automaticamente todas as horas extras..."):
                     df_pdf, percentuais_pdf = processar_pdf_dinamico(arquivo_pdf)
-                st.success(f"PDF processado. {len(df_pdf)} colaboradores identificados. HEs encontradas: {', '.join([p + '%' for p in percentuais_pdf]) if percentuais_pdf else 'nenhuma' }.")
+                msg_pdf = f"PDF processado. {len(df_pdf)} colaboradores identificados. HEs encontradas: {', '.join([p + '%' for p in percentuais_pdf]) if percentuais_pdf else 'nenhuma' }."
 
                 df_excel = None
                 df_comparacao = None
                 percentuais_excel = []
+                msg_comp = ""
 
                 if arquivo_excel:
                     with st.spinner("Lendo planilha e detectando colunas de horas extras pelo cabeçalho..."):
@@ -1134,7 +1173,7 @@ if arquivo_pdf:
                     percentuais_uniao = ordenar_percentuais(set(percentuais_pdf) | set(percentuais_excel))
                     with st.spinner("Comparando PDF x Excel..."):
                         df_comparacao = comparar_dinamico(df_pdf, df_excel, percentuais_uniao, comparar_noturno=comparar_noturno)
-                    st.info(f"HEs consideradas na comparação: {', '.join([p + '%' for p in percentuais_uniao]) if percentuais_uniao else 'nenhuma' }.")
+                    msg_comp = f"HEs consideradas na comparação: {', '.join([p + '%' for p in percentuais_uniao]) if percentuais_uniao else 'nenhuma' }."
 
             else:
                 label_he_1 = f"Hora Extra {str(he_1_percent).replace('%', '').strip()}%"
@@ -1144,60 +1183,86 @@ if arquivo_pdf:
                 colunas_pdf = montar_colunas_pdf(eventos)
                 with st.spinner("Lendo PDF e identificando colaboradores/eventos..."):
                     df_pdf = processar_pdf_manual(arquivo_pdf, eventos, colunas_pdf)
-                st.success(f"PDF processado. {len(df_pdf)} colaboradores identificados.")
+                msg_pdf = f"PDF processado. {len(df_pdf)} colaboradores identificados."
 
                 df_excel = None
                 df_comparacao = None
+                msg_comp = ""
                 if arquivo_excel:
                     with st.spinner("Lendo planilha de ponto e comparando com o PDF..."):
                         df_excel = processar_planilha_ponto_manual(arquivo_excel, label_he_1, label_he_2, label_noturno, int(col_he_1), int(col_he_2), int(col_noturno))
                         df_comparacao = comparar_manual(df_pdf, df_excel, label_he_1, label_he_2, label_noturno)
 
             if df_pdf.empty:
+                st.session_state["analise_concluida"] = False
                 st.warning("Nenhum colaborador foi identificado no PDF. Verifique se o PDF possui texto extraível.")
             else:
-                colunas_eventos = [c for c in df_pdf.columns if c not in ["Código", "Colaborador", "Página"]]
-                df_pdf_com_evento = df_pdf[df_pdf[colunas_eventos].apply(lambda row: any(str(v).strip() for v in row), axis=1)] if colunas_eventos else df_pdf
-                st.subheader("Eventos encontrados no PDF")
-                st.dataframe(df_pdf_com_evento if not df_pdf_com_evento.empty else df_pdf, use_container_width=True)
-
-                if arquivo_excel:
-                    st.subheader("Totais identificados na planilha de ponto")
-                    if df_excel is None or df_excel.empty:
-                        st.warning("Nenhum total foi identificado na planilha. Verifique se existe linha 'Colaborador', cabeçalho com HEs e linha 'TOTAIS'.")
-                    else:
-                        df_excel_view = df_excel.drop(columns=[c for c in df_excel.columns if c.endswith(" Min") or c == "Chave Nome"], errors="ignore")
-                        st.dataframe(df_excel_view, use_container_width=True)
-
-                    st.subheader("Divergências encontradas")
-                    if df_comparacao is not None and not df_comparacao.empty:
-                        df_divergencias_view = montar_divergencias_limpas(df_comparacao)
-                        st.metric("Eventos divergentes", len(df_divergencias_view))
-                        if df_divergencias_view.empty:
-                            st.success("Nenhuma divergência encontrada. Todos os eventos comparados estão OK.")
-                        else:
-                            df_horas_falta_view = filtrar_horas_falta(df_divergencias_view)
-                            if not df_horas_falta_view.empty:
-                                st.warning(f"Horas falta: {len(df_horas_falta_view)} divergência(s) encontrada(s) pela regra da coluna G.")
-                                st.dataframe(df_horas_falta_view, use_container_width=True)
-                                st.divider()
-                            st.dataframe(df_divergencias_view, use_container_width=True)
-                            with st.expander("Ver comparação completa para auditoria"):
-                                st.dataframe(df_comparacao, use_container_width=True)
-                    else:
-                        st.info("Nenhuma comparação gerada.")
-
+                df_divergencias = montar_divergencias_limpas(df_comparacao) if df_comparacao is not None else None
                 excel_bytes = gerar_excel(df_pdf, df_excel, df_comparacao)
-                st.success("Arquivo XLSX oficial gerado. Use o botão abaixo para baixar; os ícones pequenos das tabelas foram ocultados para evitar download em CSV.")
-                st.download_button(
-                    label="⬇️ Baixar planilha OFICIAL em XLSX",
-                    data=excel_bytes,
-                    file_name="conferencia_pdf_x_ponto.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    help="Use este botão para baixar o arquivo Excel verdadeiro (.xlsx). Não use o ícone pequeno das tabelas, pois ele gera CSV.",
-                )
+
+                st.session_state["df_pdf"] = df_pdf
+                st.session_state["df_excel"] = df_excel
+                st.session_state["df_comparacao"] = df_comparacao
+                st.session_state["df_divergencias"] = df_divergencias
+                st.session_state["excel_bytes"] = excel_bytes
+                st.session_state["mensagem_pdf"] = msg_pdf
+                st.session_state["mensagem_comparacao"] = msg_comp
+                st.session_state["analise_concluida"] = True
+                st.success("Conferência processada e salva na tela. Você pode baixar o XLSX sem perder a análise.")
+
         except Exception as e:
             st.error(f"Erro ao processar os arquivos: {e}")
+
+# Renderiza os resultados fora do botão para não sumirem no rerun do download.
+if st.session_state.get("analise_concluida"):
+    df_pdf = st.session_state["df_pdf"]
+    df_excel = st.session_state["df_excel"]
+    df_comparacao = st.session_state["df_comparacao"]
+    df_divergencias_view = st.session_state["df_divergencias"]
+    excel_bytes = st.session_state["excel_bytes"]
+
+    if st.session_state.get("mensagem_pdf"):
+        st.success(st.session_state["mensagem_pdf"])
+    if st.session_state.get("mensagem_comparacao"):
+        st.info(st.session_state["mensagem_comparacao"])
+
+    colunas_eventos = [c for c in df_pdf.columns if c not in ["Código", "Colaborador", "Página"]]
+    df_pdf_com_evento = df_pdf[df_pdf[colunas_eventos].apply(lambda row: any(str(v).strip() for v in row), axis=1)] if colunas_eventos else df_pdf
+    st.subheader("Eventos encontrados no PDF")
+    st.dataframe(df_pdf_com_evento if not df_pdf_com_evento.empty else df_pdf, use_container_width=True)
+
+    if df_excel is not None:
+        st.subheader("Totais identificados na planilha de ponto")
+        if df_excel.empty:
+            st.warning("Nenhum total foi identificado na planilha. Verifique se existe linha 'Colaborador', cabeçalho com HEs e linha 'TOTAIS'.")
+        else:
+            df_excel_view = df_excel.drop(columns=[c for c in df_excel.columns if c.endswith(" Min") or c == "Chave Nome"], errors="ignore")
+            st.dataframe(df_excel_view, use_container_width=True)
+
+    st.subheader("Divergências encontradas")
+    if df_comparacao is not None and not df_comparacao.empty:
+        st.metric("Eventos divergentes", len(df_divergencias_view))
+        if df_divergencias_view is None or df_divergencias_view.empty:
+            st.success("Nenhuma divergência encontrada. Todos os eventos comparados estão OK.")
+        else:
+            df_horas_falta_view = filtrar_horas_falta(df_divergencias_view)
+            if not df_horas_falta_view.empty:
+                st.warning(f"Horas falta: {len(df_horas_falta_view)} divergência(s) encontrada(s) pela regra da coluna G.")
+                st.dataframe(df_horas_falta_view, use_container_width=True)
+                st.divider()
+            st.dataframe(df_divergencias_view, use_container_width=True)
+            with st.expander("Ver comparação completa para auditoria"):
+                st.dataframe(df_comparacao, use_container_width=True)
+    else:
+        st.info("Nenhuma comparação gerada. O XLSX terá os eventos encontrados no PDF.")
+
+    st.download_button(
+        label="⬇️ Baixar planilha OFICIAL em XLSX",
+        data=excel_bytes,
+        file_name="conferencia_pdf_x_ponto.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        help="Use este botão para baixar o arquivo Excel verdadeiro (.xlsx). A análise ficará salva na tela após o download.",
+    )
 
 st.divider()
 st.caption("Modo automático: detecta qualquer percentual de Hora Extra no PDF e cruza com as colunas da planilha pelo cabeçalho específico de cada colaborador. Também lê a coluna G (Débito): >= 08:00 conta como falta em dia; > 00:00 e < 08:00 soma como horas falta.")
