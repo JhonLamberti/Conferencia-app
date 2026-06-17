@@ -1083,25 +1083,263 @@ def gerar_excel(df_pdf: pd.DataFrame, df_excel: Optional[pd.DataFrame] = None, d
 # Interface Streamlit
 # -----------------------------
 
-st.set_page_config(page_title="Conferência de Folha PDF x Ponto", layout="wide")
+st.set_page_config(
+    page_title="Auditoria de Folha | PDF x Ponto",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
-# Oculta a barra nativa das tabelas do Streamlit, pois o ícone de download dessas tabelas
-# baixa CSV. O download oficial do sistema é o botão "Baixar planilha XLSX da conferência".
+PREMIUM_CSS = """
+<style>
+:root {
+    --bg-main: #0f172a;
+    --card-bg: rgba(255,255,255,0.92);
+    --card-border: rgba(15, 23, 42, 0.08);
+    --text-muted: #64748b;
+    --brand: #1d4ed8;
+    --brand-dark: #0f2f68;
+    --danger: #dc2626;
+    --warning: #d97706;
+    --success: #16a34a;
+}
+
+/* Esconde barra nativa das tabelas do Streamlit; o download oficial é XLSX. */
+[data-testid="stElementToolbar"] {display: none !important;}
+button[title*="Download"] {display: none !important;}
+button[aria-label*="Download"] {display: none !important;}
+
+.block-container {
+    padding-top: 1.4rem;
+    padding-bottom: 3rem;
+    max-width: 1450px;
+}
+
+section[data-testid="stSidebar"] > div {
+    background: linear-gradient(180deg, #0f172a 0%, #111827 100%);
+    color: white;
+}
+section[data-testid="stSidebar"] label, section[data-testid="stSidebar"] p,
+section[data-testid="stSidebar"] span, section[data-testid="stSidebar"] .stCaption {
+    color: rgba(255,255,255,0.86) !important;
+}
+section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h1,
+section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h2,
+section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h3 {
+    color: white !important;
+}
+
+.premium-hero {
+    position: relative;
+    overflow: hidden;
+    background:
+        linear-gradient(135deg, rgba(15,23,42,.98) 0%, rgba(30,58,138,.96) 52%, rgba(15,23,42,.98) 100%);
+    padding: 34px 38px 30px 38px;
+    border-radius: 26px;
+    color: white;
+    box-shadow: 0 26px 70px rgba(15, 23, 42, 0.26);
+    margin-bottom: 24px;
+    border: 1px solid rgba(255,255,255,.14);
+}
+.premium-hero:before {
+    content: "";
+    position: absolute;
+    width: 440px;
+    height: 440px;
+    right: -180px;
+    top: -220px;
+    background: radial-gradient(circle, rgba(96,165,250,.28) 0%, rgba(96,165,250,0) 65%);
+}
+.premium-hero:after {
+    content: "";
+    position: absolute;
+    left: 38px;
+    bottom: 0;
+    width: 210px;
+    height: 3px;
+    background: linear-gradient(90deg, #60a5fa, #22c55e);
+    border-radius: 99px 99px 0 0;
+}
+.premium-hero > * { position: relative; z-index: 1; }
+.hero-kicker {
+    color: #93c5fd;
+    font-size: .78rem;
+    font-weight: 850;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+}
+.premium-hero h1 {
+    font-size: 2.35rem;
+    line-height: 1.05;
+    margin: 0 0 12px 0;
+    font-weight: 900;
+    letter-spacing: -0.055em;
+    max-width: 980px;
+}
+.premium-hero p.hero-lead {
+    margin: 0;
+    max-width: 1010px;
+    font-size: 1.02rem;
+    line-height: 1.62;
+    color: rgba(255,255,255,0.82);
+}
+.hero-summary {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+    margin-top: 24px;
+    max-width: 1120px;
+}
+.hero-summary div {
+    background: rgba(255,255,255,.07);
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: 16px;
+    padding: 14px 16px;
+    backdrop-filter: blur(8px);
+}
+.hero-summary b {
+    display: block;
+    font-size: .82rem;
+    color: #dbeafe;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    margin-bottom: 6px;
+}
+.hero-summary span {
+    display: block;
+    color: rgba(255,255,255,.78);
+    font-size: .88rem;
+    line-height: 1.38;
+}
+@media (max-width: 900px) {
+    .hero-summary { grid-template-columns: 1fr; }
+    .premium-hero h1 { font-size: 1.85rem; }
+}
+
+.card {
+    background: white;
+    border: 1px solid var(--card-border);
+    border-radius: 18px;
+    padding: 18px 20px;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, .06);
+}
+.section-title {
+    display:flex;
+    align-items:center;
+    gap:10px;
+    font-weight: 800;
+    font-size: 1.13rem;
+    color:#0f172a;
+    margin: 8px 0 12px 0;
+}
+.section-subtitle {
+    color: var(--text-muted);
+    font-size: .92rem;
+    margin-top:-7px;
+    margin-bottom: 14px;
+}
+.step-box {
+    border: 1px dashed #cbd5e1;
+    background: #f8fafc;
+    border-radius: 16px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+}
+.step-box b {color:#0f172a;}
+.step-box small {color:#64748b;}
+
+.metric-card {
+    background: white;
+    border: 1px solid rgba(15, 23, 42, .08);
+    border-radius: 18px;
+    padding: 16px 18px;
+    box-shadow: 0 8px 25px rgba(15, 23, 42, .06);
+    min-height: 104px;
+}
+.metric-card .label {
+    color: #64748b;
+    font-size: .84rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+.metric-card .value {
+    color: #0f172a;
+    font-size: 1.85rem;
+    font-weight: 850;
+    letter-spacing: -0.04em;
+    margin-top: 6px;
+}
+.metric-card .hint {
+    color: #64748b;
+    font-size: .82rem;
+    margin-top: 1px;
+}
+.metric-danger {border-left: 6px solid #dc2626;}
+.metric-success {border-left: 6px solid #16a34a;}
+.metric-blue {border-left: 6px solid #2563eb;}
+.metric-purple {border-left: 6px solid #7c3aed;}
+
+.stButton > button, .stDownloadButton > button {
+    border-radius: 14px !important;
+    border: 0 !important;
+    padding: 0.65rem 1.0rem !important;
+    font-weight: 800 !important;
+    box-shadow: 0 10px 24px rgba(29, 78, 216, .18);
+}
+.stDownloadButton > button {
+    background: linear-gradient(135deg, #16a34a 0%, #15803d 100%) !important;
+    color: white !important;
+}
+.stButton > button[kind="primary"] {
+    background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%) !important;
+}
+
+[data-testid="stFileUploader"] {
+    border: 1px solid rgba(15, 23, 42, .08);
+    border-radius: 18px;
+    padding: 4px 12px 12px 12px;
+    background: white;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, .05);
+}
+
+[data-testid="stDataFrameResizable"] {
+    border-radius: 16px;
+    overflow: hidden;
+    border: 1px solid rgba(15, 23, 42, .08);
+}
+
+hr {margin: 1.2rem 0;}
+
+.footer-note {
+    color:#64748b;
+    font-size:.84rem;
+    text-align:center;
+    padding: 18px 0 0 0;
+}
+</style>
+"""
+st.markdown(PREMIUM_CSS, unsafe_allow_html=True)
+
 st.markdown(
     """
-    <style>
-    [data-testid="stElementToolbar"] {display: none !important;}
-    button[title*="Download"] {display: none !important;}
-    button[aria-label*="Download"] {display: none !important;}
-    </style>
+    <div class="premium-hero executive-hero">
+        <div class="hero-kicker">AUDITORIA OPERACIONAL DE FOLHA</div>
+        <h1>CONFERÊNCIA AUTOMÁTICA DE PONTO</h1>
+        <p class="hero-lead">O sistema identifica os eventos de folha por colaborador, cruza com os totais da planilha de ponto e entrega resultado com foco nas divergências que exigem validação.</p>
+        <div class="hero-summary">
+            <div><b>Entrada</b><span>PDF da folha + planilha padrão de ponto</span></div>
+            <div><b>Processamento</b><span>Leitura por colaborador, regras de auditoria e comparação automática</span></div>
+            <div><b>Resultado</b><span>Relatório XLSX com divergências, resumo e auditoria completa</span></div>
+        </div>
+    </div>
     """,
     unsafe_allow_html=True,
 )
-st.title("Conferência de eventos da folha em PDF x planilha de ponto")
-st.write("Envie o PDF da folha e, opcionalmente, a planilha de ponto. O sistema detecta horas extras, adicional noturno e também calcula faltas.")
 
 with st.sidebar:
-    st.header("Configuração do contrato")
+    st.markdown("### ⚙️ Configuração")
     perfil = st.selectbox(
         "Modelo de leitura",
         [
@@ -1134,8 +1372,15 @@ with st.sidebar:
         col_he_2 = st.number_input("Coluna da HE secundária", min_value=1, max_value=80, value=11, help="Padrão: K")
         col_noturno = st.number_input("Coluna do adicional noturno", min_value=1, max_value=80, value=12, help="Padrão: L")
     else:
-        st.info("Neste modo, o app lê qualquer 'Hora Extra ...%' que encontrar no PDF. Na planilha, ele identifica as porcentagens pelo cabeçalho de cada colaborador, pois cada bloco pode ter percentuais diferentes.")
+        st.info("Modo recomendado: o app detecta qualquer Hora Extra com percentual no PDF e cruza com o cabeçalho específico de cada colaborador na planilha.")
         comparar_noturno = st.checkbox("Comparar adicional noturno da planilha", value=True)
+
+    st.divider()
+    st.markdown("### 📌 Regras ativas")
+    st.caption("• Dissídio antes de HE/Noturno é ignorado")
+    st.caption("• Noturno XX% no PDF compara com Adicional Noturno no Excel")
+    st.caption("• Coluna G >= 08:00 = falta em dia")
+    st.caption("• Coluna G > 00:00 e < 08:00 = horas falta")
 
 # Guarda os resultados no session_state para o download não apagar a análise.
 for chave, valor_padrao in {
@@ -1151,67 +1396,85 @@ for chave, valor_padrao in {
     if chave not in st.session_state:
         st.session_state[chave] = valor_padrao
 
-arquivo_pdf = st.file_uploader("1. Selecione o PDF da folha", type=["pdf"])
-arquivo_excel = st.file_uploader("2. Selecione a planilha de ponto padrão", type=["xlsx"], help="No modo automático, o app usa os cabeçalhos das colunas para identificar as HEs.")
+# Área de upload e processamento
+st.markdown('<div class="section-title">📁 Arquivos para conferência</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-subtitle">Envie o PDF da folha e a planilha padrão de ponto. O sistema processa somente após clicar em “Processar conferência”.</div>', unsafe_allow_html=True)
 
+col_upload_pdf, col_upload_excel = st.columns(2)
+with col_upload_pdf:
+    st.markdown('<div class="step-box"><b>1. PDF da folha</b><br><small>Arquivo da folha de pagamento com eventos por colaborador.</small></div>', unsafe_allow_html=True)
+    arquivo_pdf = st.file_uploader("Selecione o PDF", type=["pdf"], label_visibility="collapsed")
+with col_upload_excel:
+    st.markdown('<div class="step-box"><b>2. Planilha de ponto</b><br><small>Modelo padrão com totais, HEs, adicional noturno e coluna G de débito.</small></div>', unsafe_allow_html=True)
+    arquivo_excel = st.file_uploader("Selecione a planilha", type=["xlsx"], help="No modo automático, o app usa os cabeçalhos das colunas para identificar as HEs.", label_visibility="collapsed")
+
+processar = False
 if arquivo_pdf:
-    if st.button("Processar conferência", type="primary"):
-        try:
-            if modo_automatico:
-                with st.spinner("Lendo PDF e detectando automaticamente todas as horas extras..."):
-                    df_pdf, percentuais_pdf = processar_pdf_dinamico(arquivo_pdf)
-                msg_pdf = f"PDF processado. {len(df_pdf)} colaboradores identificados. HEs encontradas: {', '.join([p + '%' for p in percentuais_pdf]) if percentuais_pdf else 'nenhuma' }."
+    col_btn, col_hint = st.columns([1, 3])
+    with col_btn:
+        processar = st.button("🚀 Processar conferência", type="primary", use_container_width=True)
+    with col_hint:
+        st.caption("☺ PROCESSO DE CONFERÊNCIA AUTOMÁTICO ☺.")
+else:
+    st.info("Envie pelo menos o PDF da folha para iniciar a leitura.")
 
-                df_excel = None
-                df_comparacao = None
-                percentuais_excel = []
-                msg_comp = ""
+if arquivo_pdf and processar:
+    try:
+        if modo_automatico:
+            with st.spinner("Lendo PDF e detectando automaticamente todas as horas extras..."):
+                df_pdf, percentuais_pdf = processar_pdf_dinamico(arquivo_pdf)
+            msg_pdf = f"PDF processado. {len(df_pdf)} colaboradores identificados. HEs encontradas: {', '.join([p + '%' for p in percentuais_pdf]) if percentuais_pdf else 'nenhuma'}."
 
-                if arquivo_excel:
-                    with st.spinner("Lendo planilha e detectando colunas de horas extras pelo cabeçalho..."):
-                        df_excel, percentuais_excel = processar_planilha_ponto_dinamica(arquivo_excel)
-                    percentuais_uniao = ordenar_percentuais(set(percentuais_pdf) | set(percentuais_excel))
-                    with st.spinner("Comparando PDF x Excel..."):
-                        df_comparacao = comparar_dinamico(df_pdf, df_excel, percentuais_uniao, comparar_noturno=comparar_noturno)
-                    msg_comp = f"HEs consideradas na comparação: {', '.join([p + '%' for p in percentuais_uniao]) if percentuais_uniao else 'nenhuma' }."
+            df_excel = None
+            df_comparacao = None
+            percentuais_excel = []
+            msg_comp = ""
 
-            else:
-                label_he_1 = f"Hora Extra {str(he_1_percent).replace('%', '').strip()}%"
-                label_he_2 = f"Hora Extra {str(he_2_percent).replace('%', '').strip()}%"
-                label_noturno = f"Noturno {str(noturno_percent).replace('%', '').strip()}%"
-                eventos = montar_eventos_config(he_1_percent, he_2_percent, noturno_percent)
-                colunas_pdf = montar_colunas_pdf(eventos)
-                with st.spinner("Lendo PDF e identificando colaboradores/eventos..."):
-                    df_pdf = processar_pdf_manual(arquivo_pdf, eventos, colunas_pdf)
-                msg_pdf = f"PDF processado. {len(df_pdf)} colaboradores identificados."
+            if arquivo_excel:
+                with st.spinner("Lendo planilha e detectando colunas de horas extras pelo cabeçalho..."):
+                    df_excel, percentuais_excel = processar_planilha_ponto_dinamica(arquivo_excel)
+                percentuais_uniao = ordenar_percentuais(set(percentuais_pdf) | set(percentuais_excel))
+                with st.spinner("Comparando PDF x Excel..."):
+                    df_comparacao = comparar_dinamico(df_pdf, df_excel, percentuais_uniao, comparar_noturno=comparar_noturno)
+                msg_comp = f"HEs consideradas na comparação: {', '.join([p + '%' for p in percentuais_uniao]) if percentuais_uniao else 'nenhuma'}."
 
-                df_excel = None
-                df_comparacao = None
-                msg_comp = ""
-                if arquivo_excel:
-                    with st.spinner("Lendo planilha de ponto e comparando com o PDF..."):
-                        df_excel = processar_planilha_ponto_manual(arquivo_excel, label_he_1, label_he_2, label_noturno, int(col_he_1), int(col_he_2), int(col_noturno))
-                        df_comparacao = comparar_manual(df_pdf, df_excel, label_he_1, label_he_2, label_noturno)
+        else:
+            label_he_1 = f"Hora Extra {str(he_1_percent).replace('%', '').strip()}%"
+            label_he_2 = f"Hora Extra {str(he_2_percent).replace('%', '').strip()}%"
+            label_noturno = f"Noturno {str(noturno_percent).replace('%', '').strip()}%"
+            eventos = montar_eventos_config(he_1_percent, he_2_percent, noturno_percent)
+            colunas_pdf = montar_colunas_pdf(eventos)
+            with st.spinner("Lendo PDF e identificando colaboradores/eventos..."):
+                df_pdf = processar_pdf_manual(arquivo_pdf, eventos, colunas_pdf)
+            msg_pdf = f"PDF processado. {len(df_pdf)} colaboradores identificados."
 
-            if df_pdf.empty:
-                st.session_state["analise_concluida"] = False
-                st.warning("Nenhum colaborador foi identificado no PDF. Verifique se o PDF possui texto extraível.")
-            else:
-                df_divergencias = montar_divergencias_limpas(df_comparacao) if df_comparacao is not None else None
-                excel_bytes = gerar_excel(df_pdf, df_excel, df_comparacao)
+            df_excel = None
+            df_comparacao = None
+            msg_comp = ""
+            if arquivo_excel:
+                with st.spinner("Lendo planilha de ponto e comparando com o PDF..."):
+                    df_excel = processar_planilha_ponto_manual(arquivo_excel, label_he_1, label_he_2, label_noturno, int(col_he_1), int(col_he_2), int(col_noturno))
+                    df_comparacao = comparar_manual(df_pdf, df_excel, label_he_1, label_he_2, label_noturno)
 
-                st.session_state["df_pdf"] = df_pdf
-                st.session_state["df_excel"] = df_excel
-                st.session_state["df_comparacao"] = df_comparacao
-                st.session_state["df_divergencias"] = df_divergencias
-                st.session_state["excel_bytes"] = excel_bytes
-                st.session_state["mensagem_pdf"] = msg_pdf
-                st.session_state["mensagem_comparacao"] = msg_comp
-                st.session_state["analise_concluida"] = True
-                st.success("Conferência processada e salva na tela.")
+        if df_pdf.empty:
+            st.session_state["analise_concluida"] = False
+            st.warning("Nenhum colaborador foi identificado no PDF. Verifique se o PDF possui texto extraível.")
+        else:
+            df_divergencias = montar_divergencias_limpas(df_comparacao) if df_comparacao is not None else pd.DataFrame()
+            excel_bytes = gerar_excel(df_pdf, df_excel, df_comparacao)
 
-        except Exception as e:
-            st.error(f"Erro ao processar os arquivos: {e}")
+            st.session_state["df_pdf"] = df_pdf
+            st.session_state["df_excel"] = df_excel
+            st.session_state["df_comparacao"] = df_comparacao
+            st.session_state["df_divergencias"] = df_divergencias
+            st.session_state["excel_bytes"] = excel_bytes
+            st.session_state["mensagem_pdf"] = msg_pdf
+            st.session_state["mensagem_comparacao"] = msg_comp
+            st.session_state["analise_concluida"] = True
+            st.toast("Conferência concluída com sucesso.", icon="✅")
+
+    except Exception as e:
+        st.error(f"Erro ao processar os arquivos: {e}")
 
 # Renderiza os resultados fora do botão para não sumirem no rerun do download.
 if st.session_state.get("analise_concluida"):
@@ -1226,33 +1489,47 @@ if st.session_state.get("analise_concluida"):
     if st.session_state.get("mensagem_comparacao"):
         st.info(st.session_state["mensagem_comparacao"])
 
-    colunas_eventos = [c for c in df_pdf.columns if c not in ["Código", "Colaborador", "Página"]]
-    df_pdf_com_evento = df_pdf[df_pdf[colunas_eventos].apply(lambda row: any(str(v).strip() for v in row), axis=1)] if colunas_eventos else df_pdf
-    st.subheader("Eventos encontrados no PDF")
-    st.dataframe(df_pdf_com_evento if not df_pdf_com_evento.empty else df_pdf, use_container_width=True)
+    total_pdf = len(df_pdf) if df_pdf is not None else 0
+    total_excel = len(df_excel) if df_excel is not None else 0
+    total_div = len(df_divergencias_view) if df_divergencias_view is not None else 0
+    colab_div = df_divergencias_view["Colaborador"].nunique() if df_divergencias_view is not None and not df_divergencias_view.empty and "Colaborador" in df_divergencias_view.columns else 0
+    total_comp = len(df_comparacao) if df_comparacao is not None else 0
+    total_ok = max(total_comp - colab_div, 0) if total_comp else 0
 
-    if df_excel is not None:
-        st.subheader("Totais identificados na planilha de ponto")
-        if df_excel.empty:
-            st.warning("Nenhum total foi identificado na planilha. Verifique se existe linha 'Colaborador', cabeçalho com HEs e linha 'TOTAIS'.")
-        else:
-            df_excel_view = df_excel.drop(columns=[c for c in df_excel.columns if c.endswith(" Min") or c == "Chave Nome"], errors="ignore")
-            st.dataframe(df_excel_view, use_container_width=True)
+    st.markdown('<div class="section-title">📊 Resultado da conferência</div>', unsafe_allow_html=True)
+    m1, m2, m3, m4, m5 = st.columns(5)
+    with m1:
+        st.markdown(f'<div class="metric-card metric-blue"><div class="label">PDF</div><div class="value">{total_pdf}</div><div class="hint">colaboradores lidos</div></div>', unsafe_allow_html=True)
+    with m2:
+        st.markdown(f'<div class="metric-card metric-blue"><div class="label">Planilha</div><div class="value">{total_excel}</div><div class="hint">colaboradores lidos</div></div>', unsafe_allow_html=True)
+    with m3:
+        st.markdown(f'<div class="metric-card metric-danger"><div class="label">Divergências</div><div class="value">{total_div}</div><div class="hint">eventos para ação</div></div>', unsafe_allow_html=True)
+    with m4:
+        st.markdown(f'<div class="metric-card metric-purple"><div class="label">Colab. divergentes</div><div class="value">{colab_div}</div><div class="hint">pessoas com ajuste</div></div>', unsafe_allow_html=True)
+    with m5:
+        st.markdown(f'<div class="metric-card metric-success"><div class="label">Sem divergência</div><div class="value">{total_ok}</div><div class="hint">comparados OK</div></div>', unsafe_allow_html=True)
 
-    st.subheader("Divergências encontradas")
+    st.divider()
+
     if df_comparacao is not None and not df_comparacao.empty:
-        st.metric("Eventos divergentes", len(df_divergencias_view))
         if df_divergencias_view is None or df_divergencias_view.empty:
             st.success("Nenhuma divergência encontrada. Todos os eventos comparados estão OK.")
         else:
-            df_horas_falta_view = filtrar_horas_falta(df_divergencias_view)
+            st.markdown('<div class="section-title">🚨 Divergências encontradas</div>', unsafe_allow_html=True)
+            st.markdown('<div class="section-subtitle">Visão principal: apenas ocorrências que precisam ser avaliadas pela equipe.</div>', unsafe_allow_html=True)
+
+            busca = st.text_input("Buscar colaborador ou evento", placeholder="Digite parte do nome, evento ou status...")
+            df_div_filtrado = df_divergencias_view.copy()
+            if busca:
+                busca_norm = normalizar_texto(busca)
+                mask = df_div_filtrado.apply(lambda row: busca_norm in normalizar_texto(" ".join(map(str, row.values))), axis=1)
+                df_div_filtrado = df_div_filtrado[mask]
+
+            df_horas_falta_view = filtrar_horas_falta(df_div_filtrado)
             if not df_horas_falta_view.empty:
                 st.warning(f"Horas falta: {len(df_horas_falta_view)} divergência(s) encontrada(s) pela regra da coluna G.")
-                st.dataframe(df_horas_falta_view, use_container_width=True)
-                st.divider()
-            st.dataframe(df_divergencias_view, use_container_width=True)
-            with st.expander("Ver comparação completa para auditoria"):
-                st.dataframe(df_comparacao, use_container_width=True)
+
+            st.dataframe(df_div_filtrado, use_container_width=True, hide_index=True)
     else:
         st.info("Nenhuma comparação gerada. O XLSX terá os eventos encontrados no PDF.")
 
@@ -1262,7 +1539,36 @@ if st.session_state.get("analise_concluida"):
         file_name="conferencia_pdf_x_ponto.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         help="Use este botão para baixar o arquivo Excel verdadeiro (.xlsx). A análise ficará salva na tela após o download.",
+        use_container_width=True,
     )
 
-st.divider()
-st.caption("Modo automático: detecta qualquer percentual de Hora Extra no PDF e cruza com as colunas da planilha pelo cabeçalho específico de cada colaborador. Também lê a coluna G (Débito): >= 08:00 conta como falta em dia; > 00:00 e < 08:00 soma como horas falta.")
+    tab_div, tab_pdf, tab_ponto, tab_completo = st.tabs(["🚨 Divergências", "📄 Eventos PDF", "📘 Totais Ponto", "🔎 Auditoria completa"])
+
+    with tab_div:
+        if df_divergencias_view is not None and not df_divergencias_view.empty:
+            st.dataframe(df_divergencias_view, use_container_width=True, hide_index=True)
+        else:
+            st.success("Sem divergências para exibir.")
+
+    with tab_pdf:
+        colunas_eventos = [c for c in df_pdf.columns if c not in ["Código", "Colaborador", "Página"]]
+        df_pdf_com_evento = df_pdf[df_pdf[colunas_eventos].apply(lambda row: any(str(v).strip() for v in row), axis=1)] if colunas_eventos else df_pdf
+        st.dataframe(df_pdf_com_evento if not df_pdf_com_evento.empty else df_pdf, use_container_width=True, hide_index=True)
+
+    with tab_ponto:
+        if df_excel is not None:
+            if df_excel.empty:
+                st.warning("Nenhum total foi identificado na planilha. Verifique se existe linha 'Colaborador', cabeçalho com HEs e linha 'TOTAIS'.")
+            else:
+                df_excel_view = df_excel.drop(columns=[c for c in df_excel.columns if c.endswith(" Min") or c == "Chave Nome"], errors="ignore")
+                st.dataframe(df_excel_view, use_container_width=True, hide_index=True)
+        else:
+            st.info("Nenhuma planilha de ponto foi enviada.")
+
+    with tab_completo:
+        if df_comparacao is not None and not df_comparacao.empty:
+            st.dataframe(df_comparacao, use_container_width=True, hide_index=True)
+        else:
+            st.info("A comparação completa aparece aqui quando PDF e planilha são processados juntos.")
+
+st.markdown('<div class="footer-note">Auditoria operacional • PDF x ponto • XLSX oficial • Jhonnathan Lamberti Pereira</div>', unsafe_allow_html=True)
